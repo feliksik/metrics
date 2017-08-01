@@ -3,8 +3,8 @@ package example
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/service/cloudwatch/cloudwatchiface"
-	"github.com/leisurespecials/golib/observability/metrics"
-	"github.com/leisurespecials/golib/observability/metrics/writers/cloudwatch"
+	"github.com/feliksik/metrics"
+	"github.com/feliksik/metrics/writers/cloudwatch"
 	"time"
 )
 

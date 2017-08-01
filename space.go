@@ -6,89 +6,55 @@ import (
 	"sync"
 )
 
-// FlatLabelSet is a represenation of label set, that is comparable so we can use it a map key.
-// An int64 hash would be more efficient (see Prometheus), but for now it's a silly string
-// as it is easier to implement.
-type FlatLabelSet string
-
-// mergeLabels adds the given labels, overriding where necessary.
-func mergeLabels(a, b LabelSet) LabelSet {
-	merged := LabelSet{}
-	for k, v := range a {
-		merged[k] = v
-	}
-	for k, v := range b {
-		merged[k] = v
-	}
-	return merged
+// a vectorSet is a collection of named vectors, of the same type
+// (e.g. all counters, histogram, or gauges)
+type vectorSet struct {
+	namedSet map[string]*MetricVector
+	mu       sync.RWMutex
+	factory  dimensionFactory
 }
 
-func flattenLabels(b LabelSet) FlatLabelSet {
-	// iteration order is not guaranteed, so we need to sort.
-	keyList := make(sort.StringSlice, len(b), len(b))
-	i := 0
-	for k, _ := range b {
-		keyList[i] = k
-		i++
+//  get the metricVector with given name.
+func (v vectorSet) vector(name string) *MetricVector {
+	v.mu.RLock()
+	r, ok := v.namedSet[name]
+	v.mu.RUnlock()
+	if ok {
+		return r
 	}
-	keyList.Sort()
-	buf := bytes.NewBuffer([]byte{})
-	for _, k := range keyList {
-		v := b[k]
-		buf.WriteString(k)
-		buf.WriteByte('|')
-		buf.WriteString(v)
-		buf.WriteByte('|')
-	}
-	return FlatLabelSet(buf.String())
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	newVector := NewMetricVector(name, v.factory)
+	v.namedSet[name] = newVector
+	return newVector
 }
 
 // MetricVector contains metrics, differentiated per label set.
+// so it is a metric with different dimensions, as defined by the set of labels.
 type MetricVector struct {
-	// factory method creates the metric of the right type
-	name         string
-	index        map[FlatLabelSet]DimensionedMetric
-	list         []DimensionedMetric
-	createMetric func(labels LabelSet) DimensionedMetric
-	mu           sync.RWMutex
+	name             string
+	rootNode         *node
+	mtx              sync.RWMutex
+	dimensionFactory dimensionFactory
 }
 
-func NewMetricVector(name string) *MetricVector {
+func NewMetricVector(name string, factory dimensionFactory) *MetricVector {
 	m := &MetricVector{
-		name: name,
-
-		// index and list are duplicating.
-		// index is for fast indexing.
-		// slice allows lock-free iteration.
-		index:        make(map[FlatLabelSet]DimensionedMetric),
-		list:         make([]DimensionedMetric, 0),
-		createMetric: nil, // has to be set by caller
+		name:             name,
+		dimensionFactory: factory,
+		rootNode:         nil, // set below, cross-reference
 	}
+	m.rootNode = newNode(m, LabelPairs{})
 	return m
 }
 
-// GetMetricWith returns the metric with the specified labels.
-func (m *MetricVector) GetMetricWith(labels LabelSet) DimensionedMetric {
-	hash := flattenLabels(labels)
-	m.mu.RLock()
-	dimMetric, ok := m.index[hash]
-	m.mu.RUnlock()
-	if ok {
-		return dimMetric
-	}
-
-	dimMetric = m.createMetric(labels)
-
-	m.mu.Lock()
-	m.index[hash] = dimMetric
-	m.list = append(m.list, dimMetric)
-	m.mu.Unlock()
-
-	return dimMetric
-}
-
-// List returns the metric list.
-// Fixme Not this is not immutable, so handle with care.
-func (m *MetricVector) List() []DimensionedMetric {
-	return m.list
+// Reset empties the current MetricVector and returns a new MetricVector with the old
+// contents. Reset a MetricVector to get an immutable copy suitable for walking.
+func (m *MetricVector) Reset() *MetricVector {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	n := NewMetricVector(m.name, m.dimensionFactory)
+	n.rootNode, m.rootNode = m.rootNode, n.rootNode
+	return n
 }

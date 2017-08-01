@@ -8,7 +8,7 @@ import "time"
 // Also we're not sure if making an interface for this Name() adds much.
 type DimensionedMetric interface {
 	Name() string
-	Dimensions() LabelSet
+	Dimensions() LabelPairs
 }
 
 // interfaces inspired by gokit
@@ -35,13 +35,13 @@ type Gauge interface {
 }
 
 type Histogram interface {
-	Observe(value float64)
+	Observe(value uint64)
 }
 
 type DimensionedCounter interface {
 	Counter
 	DimensionedMetric
-	With(labels LabelSet) DimensionedCounter
+	With(labels LabelPairs) DimensionedCounter
 }
 
 // DimensionedGauge describes a metric that takes specific values over time.
@@ -49,7 +49,7 @@ type DimensionedCounter interface {
 type DimensionedGauge interface {
 	Gauge
 	DimensionedMetric
-	With(labels LabelSet) DimensionedGauge
+	With(labels LabelPairs) DimensionedGauge
 }
 
 // DimensionedHistogram describes a metric that takes repeated observations of the same
@@ -59,7 +59,7 @@ type DimensionedGauge interface {
 type DimensionedHistogram interface {
 	Histogram
 	DimensionedMetric
-	With(labels LabelSet) DimensionedHistogram
+	With(labels LabelPairs) DimensionedHistogram
 }
 
 // MetricSender sends metrics to a metrics backend

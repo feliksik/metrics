@@ -5,7 +5,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/cloudwatch/cloudwatchiface"
-	"github.com/leisurespecials/golib/observability/metrics"
+	"github.com/feliksik/metrics"
 	"time"
 )
 
@@ -137,13 +137,13 @@ func (m *metricSender) Flush() {
 	m.datums = make([]*cloudwatch.MetricDatum, 0, maxCloudwatchDatums)
 }
 
-func makeDimensions(labels metrics.LabelSet) []*cloudwatch.Dimension {
+func makeDimensions(labels metrics.LabelPairs) []*cloudwatch.Dimension {
 	dimensions := make([]*cloudwatch.Dimension, len(labels), len(labels))
 	i := 0
-	for k, v := range labels {
+	for _, lbl := range labels {
 		dimensions[i] = &cloudwatch.Dimension{
-			Name:  aws.String(k),
-			Value: aws.String(v),
+			Name:  aws.String(lbl.Name()),
+			Value: aws.String(lbl.Value()),
 		}
 		i++
 	}
